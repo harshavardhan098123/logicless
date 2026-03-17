@@ -1,0 +1,140 @@
+import streamlit as st
+from groq import Groq
+import os
+import html
+from datetime import date
+
+# ── Page Config ─────────────────────────────────────────────
+st.set_page_config(
+    page_title="BuildWise AI",
+    page_icon="🏗️",
+    layout="wide",
+)
+
+# ── Groq Config ─────────────────────────────────────────────
+MODEL = "llama-3.3-70b-versatile"
+
+def call_ai(prompt: str, system: str):
+    api_key = st.session_state.get("groq_api_key") or os.getenv("GROQ_API_KEY")
+
+    if not api_key:
+        return "⚠️ Please enter your Groq API key."
+
+    for _ in range(2):  # retry
+        try:
+            client = Groq(api_key=api_key)
+            resp = client.chat.completions.create(
+                model=MODEL,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=4000,
+                temperature=0.4,
+            )
+            return resp.choices[0].message.content
+        except Exception as e:
+            error = str(e)
+
+    return f"❌ Error: {error}"
+
+# ── Sidebar ─────────────────────────────────────────────────
+with st.sidebar:
+    st.title("⚙️ Configuration")
+
+    key_input = st.text_input("Groq API Key", type="password")
+    if key_input:
+        st.session_state["groq_api_key"] = key_input
+
+# ── Header ──────────────────────────────────────────────────
+st.title("🏗️ BuildWise AI")
+st.caption("AI-Powered Construction Planning Platform")
+
+# ── Tabs ────────────────────────────────────────────────────
+tabs = st.tabs([
+    "💰 Cost Estimation",
+    "📅 Schedule",
+    "💬 Chat"
+])
+
+# ── COST TAB ────────────────────────────────────────────────
+with tabs[0]:
+    st.subheader("Cost Estimator")
+
+    location = st.text_input("Project Location")
+    area = st.number_input("Area (sq ft)", 100, 1000000, 2000)
+
+    if st.button("Generate Estimate"):
+        if not location:
+            st.warning("Enter location")
+            st.stop()
+
+        prompt = f"""
+        Estimate construction cost for:
+        Location: {location}
+        Area: {area} sq ft
+        """
+
+        result = call_ai(
+            prompt,
+            "You are a construction cost expert."
+        )
+
+        safe = html.escape(result)
+        st.markdown(f"<div>{safe}</div>", unsafe_allow_html=True)
+
+# ── SCHEDULE TAB ────────────────────────────────────────────
+with tabs[1]:
+    st.subheader("Schedule Generator")
+
+    start = st.date_input("Start Date", value=date.today())
+    months = st.number_input("Duration (months)", 1, 60, 12)
+
+    if st.button("Generate Schedule"):
+        prompt = f"""
+        Start Date: {start.strftime('%Y-%m-%d')}
+        Duration: {months} months
+        """
+
+        result = call_ai(
+            prompt,
+            "You are a construction planner."
+        )
+
+        st.text_area("Result", result, height=400)
+
+# ── CHAT TAB ────────────────────────────────────────────────
+with tabs[2]:
+    st.subheader("Construction Chat")
+
+    if "chat" not in st.session_state:
+        st.session_state["chat"] = []
+
+    for msg in st.session_state.chat:
+        st.write(f"**{msg['role']}**: {msg['content']}")
+
+    user = st.text_input("Ask something")
+
+    if st.button("Send"):
+        if user:
+            st.session_state.chat.append({"role": "user", "content": user})
+
+            history = "\n".join(
+                [f"{m['role']}: {m['content']}" for m in st.session_state.chat[-5:]]
+            )
+
+            reply = call_ai(
+                history,
+                "You are a construction expert."
+            )
+
+            st.session_state.chat.append({"role": "assistant", "content": reply})
+            st.rerun()
+
+    if st.button("Clear Chat"):
+        st.session_state.chat = []
+        st.rerun()
+
+# ── Footer ──────────────────────────────────────────────────
+st.markdown("---")
+st.caption("BuildWise AI • Powered by Groq")
